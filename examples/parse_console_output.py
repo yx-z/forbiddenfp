@@ -63,7 +63,7 @@ from typing import Optional, Dict
 
 from typing_extensions import Self
 
-from src.forbiddenfp import use, not_equals, equals, startswith
+from forbiddenfp import use, not_equals, equals, startswith
 
 
 class Dir:

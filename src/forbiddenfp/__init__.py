@@ -7,6 +7,8 @@ import collections
 import functools
 import itertools
 import operator
+import typing
+from copy import deepcopy
 from numbers import Number
 from typing import Callable, List, NoReturn, Optional, Dict, TypeVar, Iterable, Sequence, Tuple, Union, Set, Type, \
     ContextManager, Any
@@ -25,8 +27,20 @@ _ExceptionType = Type[Exception]
 _ExceptionOrExceptionFunc = Union[_ExceptionType, Callable[[_P], _ExceptionType]]
 
 
+def pack(f: Callable[..., _R]) -> Callable[_P, _R]:
+    return lambda args, **kwargs: f(*args, **kwargs)
+
+
 def chain_as(name: str, cls: Type = object) -> Callable[[_F], _F]:
     def decorator(func: _F) -> _F:
+        """
+        For each chained method, generate an "unpack" version as well.
+        e.g. [(1, 2), (3, 4)].sum(lambda x: x[0] * x[1])
+        can also be called with [(1, 2), (3, 4)].sum_unpack(lambda x, y: x * y)
+        """
+        if any(isinstance(hint, Callable) for hint in typing.get_type_hints(func).values()):
+            curse(cls, f"{name}_unpack", lambda self, f, *args, **kwargs: func(self, pack(f), *args, **kwargs))
+
         curse(cls, name, func)
         return func
 
@@ -54,6 +68,10 @@ def chain_and_make_func(func: _F) -> Callable[[_P2, _P], _R]:
 
 def use(val: _P) -> Callable[..., _P]:
     return lambda *args, **kwargs: val
+
+
+def deepcopying(val: _P) -> Callable[..., _P]:
+    return lambda *args, **kwargs: deepcopy(val)
 
 
 @chain_and_make_func
@@ -139,6 +157,11 @@ def is_none(val: _P) -> bool:
 @chainable
 def is_not_none(val: _P) -> bool:
     return val is not None
+
+
+@chain_as("abs")
+def abs_val(self: _P) -> _P:
+    return abs(self)
 
 
 @chain_and_make_func
@@ -313,15 +336,25 @@ def split_at(self: Iterable[_P], pred: _Pred) -> Iterable[Tuple[_P, ...]]:
 @chain_and_make_func
 def batch(self: Iterable[_P], n: int) -> Iterable[Tuple[_P, ...]]:
     it = iter(self)
-    while batch := tuple(islice(it, n)):
+    batch = tuple(itertools.islice(it, n))
+    while batch:
         yield batch
+        batch = tuple(itertools.islice(it, n))
+
+
+@chain_and_make_func
+def index_if(self: Sequence[_P], predicate: _Pred) -> Optional[int]:
+    for i, item in enumerate(self):
+        if predicate(item):
+            return i
+    return None
 
 
 @chain_and_make_func
 def i_th(self: Iterable[_P], i: int) -> _P:
     try:
         return self[i]
-    except:
+    except TypeError:
         return next(itertools.islice(self, i))
 
 
@@ -378,22 +411,11 @@ def set_item(self: _P, key: _P2, val: _R) -> _P:
     return self
 
 
-@chain_and_make_func
-def apply_unpack(self: _P, func: _F) -> _R:
-    func(*self)
-    return self
-
-
-@chain_and_make_func
-def then_unpack(self: _P, func: _F) -> _R:
-    return func(*self)
-
-
 @chainable
 def empty(self: Iterable[_P]) -> bool:
     try:
-        return len(self) == 0
-    except:
+        return len(list(self)) == 0
+    except TypeError:
         return all(False for _ in self)
 
 
@@ -455,18 +477,12 @@ def filter_iter(self: Iterable[_P], predicate: _Pred = truthful) -> Iterable[_P]
 
 
 @chain_and_make_func
-def filter_unpacked(self: Iterable[Iterable[_P]],
-                    predicate: Callable[[_P.args], bool] = truthful) -> Iterable[Iterable[_P]]:
-    return filter(lambda t: predicate(*t), self)
-
-
-@chain_and_make_func
-def filter_key(self: Dict[_P, _P2], predicate: Callable[[_P], bool]) -> Iterable[Tuple[_P, _P2]]:
+def filter_key(self: Dict[_P, _P2], predicate: Callable[[_P], bool] = truthful) -> Iterable[Tuple[_P, _P2]]:
     return filter(lambda t: predicate(t[0]), self.items())
 
 
 @chain_and_make_func
-def filter_val(self: Dict[_P, _P2], predicate: Callable[[_P2], bool]) -> Iterable[Tuple[_P, _P2]]:
+def filter_val(self: Dict[_P, _P2], predicate: Callable[[_P2], bool] = truthful) -> Iterable[Tuple[_P, _P2]]:
     return filter(lambda t: predicate(t[1]), self.items())
 
 
@@ -486,9 +502,14 @@ def sum_iter(self: Iterable[_P], of: Callable[[_P], Number] = identity, predicat
     return sum(map(of, filter(predicate, self)))
 
 
-@make_func
 @chain_as("len")
-def len_iter(self: Iterable[_P], predicate: _Pred = use(True)) -> int:
+def len_iter(self: Sequence[_P]) -> int:
+    return len(list(self))
+
+
+@make_func
+@chainable
+def count_if(self: Iterable[_P], predicate: _Pred = truthful) -> int:
     return sum(map(lambda _: 1, filter(predicate, self)))
 
 
@@ -543,6 +564,11 @@ def zip_iter(*self: Iterable[_P]) -> Iterable[Tuple[_P, ...]]:
     return zip(*self)
 
 
+@chain_and_make_func
+def zip_longest(*self: Iterable[_P], fillvalue: Optional[_P] = None) -> Iterable[Tuple[_P, ...]]:
+    return itertools.zip_longest(*self, fillvalue=fillvalue)
+
+
 @chain_as("enumerate")
 def enumerate_iter(self: Iterable[_P]) -> Iterable[Tuple[int, _P]]:
     return enumerate(self)
@@ -574,11 +600,6 @@ def join(self: Iterable[_P], sep: str = "", to_str: Callable[[_P], str] = str) -
 
 
 @chain_and_make_func
-def starmap(self: Iterable[Iterable[_P]], func: Callable[[_P.args], _R]) -> Iterable[_R]:
-    return itertools.starmap(func, self)
-
-
-@chain_and_make_func
 def each_also(self: Sequence[Sequence[_P]], func: Callable[[Iterable[_P]], _R]) -> Sequence[Sequence[_P]]:
     for x in self:
         func(x)
@@ -586,22 +607,9 @@ def each_also(self: Sequence[Sequence[_P]], func: Callable[[Iterable[_P]], _R]) 
 
 
 @chain_and_make_func
-def each_also_unpacked(self: Sequence[Sequence[_P]], func: Callable[[_P.args], _R]) -> Sequence[Sequence[_P]]:
-    for x in self:
-        func(*x)
-    return self
-
-
-@chain_and_make_func
 def each(self: Iterable[Iterable[_P]], func: Callable[[Iterable[_P]], _R]) -> None:
     for x in self:
         func(x)
-
-
-@chain_and_make_func
-def each_unpacked(self: Iterable[Iterable[_P]], func: Callable[[_P.args], _R]) -> None:
-    for x in self:
-        func(*x)
 
 
 @chain_and_make_func
@@ -648,7 +656,7 @@ def islice_up_to(self: Iterable[_P], stop: int, predicate: _Pred = use(True)) ->
 
 @chain_and_make_func
 def islice(
-        self: Iterable[_P], start: int, stop: Optional[int], step: int = 1, predicate: _Pred = use(True)
+        self: Iterable[_P], start: int, stop: Optional[int] = None, step: int = 1, predicate: _Pred = use(True)
 ) -> Iterable[_P]:
     return itertools.islice(filter(predicate, self), start, stop, step)
 
@@ -664,8 +672,8 @@ def float_obj(self: _P) -> float:
 
 
 @chain_as("int")
-def int_obj(self: _P) -> int:
-    return int(self)
+def int_obj(self: _P, base: int = 10) -> int:
+    return int(self, base)
 
 
 @chain_and_make_func
@@ -681,11 +689,6 @@ def endswith(self: str, suffix: str) -> bool:
 @chain_and_make_func
 def replace(self: str, from_str: str, to_str: str) -> str:
     return self.replace(from_str, to_str)
-
-
-@chain_and_make_func
-def split(self: str, sep: str) -> List[str]:
-    return self.split(sep)
 
 
 @chain_as("str")
@@ -710,6 +713,11 @@ def if_branches(self: _P, true_func: _F, false_func: _F, predicate: _Pred = trut
 
 
 @chain_and_make_func
+def if_true_val(self: _P, val: _P, predicate: _Pred = truthful) -> Optional[_R]:
+    return val if predicate(self) else None
+
+
+@chain_and_make_func
 def if_true(self: _P, func: _F, predicate: _Pred = truthful) -> Optional[_R]:
     return func(self) if predicate(self) else None
 
@@ -731,13 +739,13 @@ def apply_if_true(self: _P, func: _F, predicate: _Pred = truthful) -> _P:
 
 
 @chain_and_make_func
-def or_else(self: _P, val: _R, predicate: _Pred = truthful) -> _R:
-    return self if predicate(self) else val
+def or_else(self: _P, val: _R) -> _R:
+    return val if self is None else self
 
 
 @chain_and_make_func
-def or_eval(self: _P, func: _F, predicate: _Pred = truthful) -> _R:
-    return self if predicate(self) else func(self)
+def or_eval(self: _P, func: _F) -> _R:
+    return func(self) if self is None else self
 
 
 @chain_and_make_func
@@ -829,23 +837,3 @@ def with_open(self: _P,
               **kwargs: _P.kwargs) -> _R2:
     with open_func(self, mode, *args, **kwargs) as f:
         return then(self, f)
-
-
-def take_unpacked(
-        func_on_iterable_of_iterable: Callable[[Callable[[Iterable[_P]], _R], Iterable[Iterable[_P]]], _R2]
-) -> Callable[[Callable[[_P.args], _R], Iterable[Iterable[_P]]], _R2]:
-    """
-    e.g.
-    filter(lambda tup: tup[0] > tup[1], [(1, 2), (3, 2)]
-    can be transformed so that it takes a predicate with two arguments (for clarity):
-    take_unpacked(filter)(lambda x, y: x > y, [(1, 2), (3, 2)])
-    """
-
-    @functools.wraps(func_on_iterable_of_iterable)
-    def decorated(func: Callable[[_P.args], _R], iterable_of_iterable: Iterable[Iterable[_P]]) -> _R2:
-        return func_on_iterable_of_iterable(lambda args: func(*args), iterable_of_iterable)
-
-    return decorated
-
-
-chain_as("take_unpacked")(lambda self, func: lambda f: take_unpacked(func)(f, self))

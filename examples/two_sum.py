@@ -6,12 +6,12 @@ You can return the answer in any order.
 """
 from typing import List, Dict, Tuple
 
-from src.forbiddenfp import is_not_none
+from forbiddenfp import is_not_none
 
 
 def two_sum(nums: List[int], target: int) -> Tuple[int]:
     seen: Dict[int, int] = {}
-    return nums.enumerate().starmap(lambda i, n: seen.setitem(n, i).then_use(
+    return nums.enumerate().map_unpack(lambda i, n: seen.setitem(n, i).then_use(
         seen.get(target - n).if_true(lambda j: (j, i), is_not_none)
     )).next(is_not_none)
 

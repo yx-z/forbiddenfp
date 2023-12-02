@@ -13,16 +13,16 @@ from typing import Set, Tuple, Iterable
 
 from typing_extensions import Self
 
-from src.forbiddenfp import in_iter, not_equals
+from forbiddenfp import in_iter, not_equals
 
 
 def evolve(cells: Set[Tuple[int, int]]) -> Set[Tuple[int, int]]:
     def neighbors(cell: Tuple[int, int]) -> Iterable[Tuple[int, int]]:
         r, c = cell
-        return {-1, 0, 1}.tee().product().filter(not_equals((0, 0))).starmap(lambda x, y: (r + x, c + y))
+        return {-1, 0, 1}.tee().product().filter(not_equals((0, 0))).map_unpack(lambda x, y: (r + x, c + y))
 
     def count_neighbors(cell: Tuple[int, int]) -> int:
-        return neighbors(cell).len(in_iter(cells))
+        return neighbors(cell).count_if(in_iter(cells))
 
     pertained = cells.filter(lambda cell: count_neighbors(cell) in {2, 3})
     newborn = cells.map(neighbors).flatten().filter(lambda n: count_neighbors(n) == 3)
@@ -51,7 +51,7 @@ class UI:
         self.evolve_event = None
         self.canvas = Canvas(root, width=GRID_SIZE * CELL_SIZE, height=GRID_SIZE * CELL_SIZE).apply(Canvas.pack)
         self.grid()
-        (("Start", self.start), ("Reset", self.reset)).each_unpacked(
+        (("Start", self.start), ("Reset", self.reset)).each_unpack(
             lambda txt, cmd: Button(self.root, text=txt, command=cmd).apply(lambda t: t.pack(side=LEFT)))
 
     def grid(self: Self) -> None:

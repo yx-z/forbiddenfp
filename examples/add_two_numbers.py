@@ -10,7 +10,7 @@ from typing import Optional
 
 from typing_extensions import Self
 
-import src.forbiddenfp  # noqa
+import forbiddenfp  # noqa
 
 
 @dataclass

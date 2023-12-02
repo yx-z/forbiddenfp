@@ -1,6 +1,6 @@
 from pathlib import Path
 
-import src.forbiddenfp  # noqa
+import forbiddenfp  # noqa
 
 ("./lorem_ipsum.txt"
  .with_open(lambda path, f: f.read().also(print(f"Reading {path}")))

@@ -6,7 +6,7 @@ If there is no common prefix, return an empty string "".
 from functools import partial
 from itertools import takewhile
 
-from src.forbiddenfp import next_iter, compose_r, equals
+from forbiddenfp import next_iter, compose_r, equals
 
 
 def longest_common_prefix(*strs: str) -> str:

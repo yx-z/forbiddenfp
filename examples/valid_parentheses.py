@@ -7,7 +7,7 @@ Open brackets must be closed in the correct order.
 Every close bracket has a corresponding open bracket of the same type.
 """
 from typing import List
-from src.forbiddenfp import falseful, truthful, not_in
+from forbiddenfp import falseful, truthful, not_in
 
 
 def is_valid(s: str) -> bool:
